@@ -3,33 +3,16 @@ const app = express();
 const http = require('http').Server(app);
 const cors = require('cors');
 const io = require('socket.io')(http, {
-    cors: {
-        origin: "http://localhost:8080",
-        methods: ["GET", "POST"],
-        transports: ['websocket', 'polling'],
-        credentials: true
-    },
+  cors: {
+    origin: ["http://192.168.43.169:8080", "http://localhost:8080"],
+    methods: ["GET", "POST"],  
+    credentials: true
+  },
     allowEIO3: true
 });
 const { v4: uuidv4 } = require('uuid');
 const generateId = () => uuidv4();
 
-var room = {
-    room_id:"uuid",
-    room_name : "ayo duel",
-    users:[
-        {
-            id:"123123123",
-            username:"maru",
-            score:1,
-        },
-        {
-            id:"123123123",
-            username:"ilyas",
-            score:0,
-        },
-    ],
-};
 var rooms = {};
 var users = {};
 
@@ -68,23 +51,36 @@ io.on('connection', (socket) => {
         rooms[data.room_id]['users'][socket.id]['status'] = 'picked';
         rooms[data.room_id]['data_count'] = data_count+1;       
         console.log(rooms[data.room_id]);
+
         io.to(data.room_id).emit('new_data', rooms[data.room_id]);
     });
 
-    socket.on('new_user', (username) => {
+    socket.on('new_user', (username) => { 
         users[socket.id] = username;
         console.log(users);
     });
 
-    socket.on('disconnect', () => {
-        delete users[socket.id];
-        console.log(users);
+    socket.on('disconnecting', () => {
+        try{
+            var room_id = Array.from(socket.rooms.entries())[1][0]
+            io.to(room_id).emit('log_disconnect', users[socket.id]);
+            rooms[room_id]['users_count'] -= 1;
+            if(rooms[room_id]['users_count'] == 0){
+                delete rooms[room_id];
+            }
+            delete users[socket.id];
+            delete rooms[room_id]['users'][socket.id];
+            io.to(room_id).emit('new_data', rooms[room_id]);
+        }catch(err){
+            console.log(err.message);
+        }
     });
 
     socket.on("join_room", (data) => {
-        if (!data.room_id) {
-            
+        if (!data.room_id || !rooms[data.room_id]) {
+            return null
         }
+        io.to(data.room_id).emit('log_join', users[socket.id]);
         socket.join(data.room_id);
         let this_room = rooms[data.room_id];
         console.log(this_room);
@@ -94,48 +90,45 @@ io.on('connection', (socket) => {
                 user_id :socket.id,
                 username:users[socket.id],
                 status:'picking',
+                score:0,
             };
-            this_room['users_count'] = user_count+1;
+            this_room['users_count'] = user_count+1;    
             console.log(rooms);
             var joined = {
                 room_name   : this_room['room_name'],
                 user_count  : this_room['user_count'],
                 room        : this_room,
             };
+            console.log(this_room.users);
             io.to(data.room_id).emit('room_joined',joined);
-            socket.emit('self', {
-                    user_id : socket.id,
-                    username : users[socket.id],
-                },)
+            socket.emit('self', rooms[data.room_id]['users'][socket.id],)
         }else{
             socket.emit('room_full');
         }
     });
 
-    // socket.on('new_room',(data) => {
-    //     let username = data.username;
-    //     let userId = socket.id;
-    //     let room_id = generateId();
-    //     let room_name = data.room_name;
-    //     socket.join(room_id);
+    socket.on('win',(room_id) => {
+        rooms[room_id]['data'] = {};
+        rooms[room_id]['data_count'] = 0;
+        rooms[room_id]['users'][socket.id]['score'] += 1;
+        rooms[room_id]['users'][socket.id]['status'] = 'picking';
+        io.to(room_id).emit('new_data', rooms[room_id]);
 
-    //     rooms[room_id] = {
-    //         room_id:room_id,
-    //         room_name:room_name,
-    //         host:null,
-    //         player:null,
-    //     }
+    });
 
-    //     rooms[room_id]['host'] = {
-    //         user_id : userId,
-    //         username:username,
-    //         score:0,
-            
-    //     };
-    //     console.log(rooms[room_id]);
-    //     io.to(room_id).emit('room_created', rooms[room_id]);
+    socket.on('lose',(room_id) => {
+        rooms[room_id]['data'] = {};
+        rooms[room_id]['data_count'] = 0;
+        rooms[room_id]['users'][socket.id]['status'] = 'picking';
+        io.to(room_id).emit('new_data', rooms[room_id]);
+    });
 
-    // });
+    socket.on('tie',(room_id) => {
+        rooms[room_id]['data'] = {};
+        rooms[room_id]['data_count'] = 0;
+        rooms[room_id]['users'][socket.id]['status'] = 'picking';
+        io.to(room_id).emit('new_data', rooms[room_id]);
+    });
 
 
     socket.emit('halo', {
