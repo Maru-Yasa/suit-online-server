@@ -1,10 +1,11 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
 const http = require('http').Server(app);
 const cors = require('cors');
 const io = require('socket.io')(http, {
   cors: {
-    origin: ["http://192.168.43.169:8080", "http://localhost:8080"],
+    origin: ["http://192.168.43.169:8080", "http://localhost:8080", proccess.env.CLIENT_URL],
     methods: ["GET", "POST"],  
     credentials: true
   },
